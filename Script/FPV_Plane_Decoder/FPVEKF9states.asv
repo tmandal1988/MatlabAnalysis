@@ -1,0 +1,113 @@
+EKFstates=zeros(9,1);
+P=eye(9);
+Q=diag([0,0,0,7.88e-4,8.937e-4,8.87e-4,3.047e-6,4.059e-6,4.675e-6]);
+
+ALPHA=2;
+R=diag([ALPHA*.1023,ALPHA*.5060,ALPHA*.5120,ALPHA*3.89e-4,ALPHA*1.113e-4,ALPHA*9.84e-4]);
+
+Rot=[0.104399541484715,-0.621882832203930,-0.776120144531631,-21011.4278796576;0.986199751670064,0.165559807338325,0,-83.0472192843445;0.128494301600050,-0.765409493803229,0.630585062661811,-6369913.49706383;0,0,0,1];
+
+dataSize=length(GPS.x)
+localGPS=zeros(dataSize,6);
+H=[1 0 0 0 0 0 0 0 0;0 1 0 0 0 0 0 0 0;0 0 1 0 0 0 0 0 0;0 0 0 1 0 0 0 0 0;0 0 0 0 1 0 0 0 0;0 0 0 0 0 1 0 0 0];
+
+%convert GPS velocity to local velocity
+for i=1:1:dataSize;
+    localGPS(i,:)=[1 0 0;0 -1 0;0 0 -1]*Rot*[GPS.x(i);GPS.y(i);GPS.z(i)];
+end
+
+dt=Flight_Data.Delta_Time;
+cdeg2rad = 0.017;
+g=9.8;
+
+EKF.phi=zeros(dataSize,1);
+EKF.theta=zeros(dataSize,1);
+EKF.psi=zeros(dataSize,1);
+
+EKF.x=zeros(dataSize,1);
+EKF.y=zeros(dataSize,1);
+EKF.z=zeros(dataSize,1);
+
+EKF.vx=zeros(dataSize,1);
+EKF.vy=zeros(dataSize,1);
+EKF.vz=zeros(dataSize,1);
+
+for i=1:1:dataSize
+    
+    s_phi=sin(EKFstates(7));
+	c_phi=cos(EKFstates(7));
+
+	s_theta=sin(EKFstates(8));
+	c_theta=cos(EKFstates(8));
+	sec_theta=1/c_theta;
+    t_theta=s_theta/c_theta;
+
+	s_psi=sin(EKFstates(9));
+	c_psi=cos(EKFstates(9));
+    
+    EKFstates(1)=EKFstates(1)+dt(i)*EKFstates(4);
+    EKFstates(2)=EKFstates(2)+dt(i)*EKFstates(5);
+    EKFstates(3)=EKFstates(3)+dt(i)*EKFstates(6);
+    
+    EKFstates(4)=EKFstates(4) + dt*(g*Flight_Data.Ax(i)*c_theta*c_psi + g*Flight_Data.Ay(i)*(-c_phi*s_psi + s_phi*s_theta*c_psi) + g*Flight_Data.Az(i)*(s_phi*s_psi + c_phi*s_theta*c_psi));
+	EKFstates(5)=EKFstates(5) + dt*(g*Flight_Data.Ax(i)*c_theta*s_psi + g*Flight_Data.Ay(i)*(c_phi*c_psi + s_phi*s_theta*s_psi) + g*Flight_Data.Az(i)*(-s_phi*c_psi + c_phi*s_theta*s_psi));
+	EKFstates(6)=EKFstates(6) + dt*(-g*Flight_Data.Ax(i)*s_theta + (g*Flight_Data.Ay(i)*s_phi + g*Flight_Data.Az(i)*c_phi)*c_theta)+g*dt;
+    
+    EKFstates(7)=EKFstates(7) + dt*(Flight_Data.P(i)*cdeg2rad+(Flight_Data.Q(i)*cdeg2rad*s_phi + Flight_Data.R(i)*cdeg2rad*c_phi)*t_theta);
+    EKFstates(8)=EKFstates(8) + dt*(Flight_Data.Q(i)*cdeg2rad*c_phi - Flight_Data.R(i)*cdeg2rad*s_phi);
+	EKFstates(9)=EKFstates(9) + dt*(Flight_Data.Q(i)*cdeg2rad*s_phi + Flight_Data.R(i)*cdeg2rad*c_phi)*sec_theta;
+    
+    A(7,1)=1+dt*t_theta*(c_phi*Flight_Data.Q(i)*cdeg2rad - s_phi*Flight_Data.R(i)*cdeg2rad);
+    A(7,2)=dt*sec_theta*sec_theta*(s_phi*Flight_Data.Q(i)*cdeg2rad + c_phi*Flight_Data.R(i)*cdeg2rad);
+    
+    A(8,1)=-dt*(s_phi*Flight_Data.Q(i)*cdeg2rad + c_phi*Flight_Data.R(i)*cdeg2rad);
+    A(8,2)=1;
+    
+    A(9,1)=dt*sec_theta*(c_phi*Flight_Data.Q(i)*cdeg2rad - s_phi*Flight_Data.R(i)*cdeg2rad);
+    A(9,2)=dt*sec_theta*t_theta*(s_phi*Flight_Data.Q(i)*cdeg2rad + c_phi*Flight_Data.R(i)*cdeg2rad);
+    A(9,3)=1;
+    
+    A(4,1)=dt*(g*Flight_Data.Ay(i)*(s_phi*s_psi + c_phi*s_theta*c_psi) + g*Flight_Data.Az(i)*(c_phi*s_psi - s_phi*s_theta*c_psi));
+    A(4,2)=dt*(g*Flight_Data.Ax(i)*(-s_theta*c_psi) + g*Flight_Data.Ay(i)*(c_theta*c_psi*s_phi) + g*Flight_Data.Az(i)*(c_phi*c_theta*c_psi));
+    A(4,3)=dt*(g*Flight_Data.Ax(i)*(-c_theta*s_psi)-g*Flight_Data.Ay(i)*(c_phi*c_psi+s_phi*s_theta*s_psi)+g*Flight_Data.Az(i)*(s_phi*s_psi-s_phi*s_theta*s_psi));
+    A(4,4)=1;
+    
+    A(5,1)=dt*(g*Flight_Data.Ay(i)*(-s_phi*c_psi + c_phi*s_theta*s_psi) - g*Flight_Data.Az(i)*(c_phi*c_psi - s_phi*s_theta*s_psi));
+    A(5,2)=dt*(g*Flight_Data.Ax(i)*(-s_theta*s_psi) + g*Flight_Data.Ay(i)*(c_theta*s_phi*s_psi) + g*Flight_Data.Az(i)*(c_phi*c_theta*s_psi));
+    A(5,3)=dt*(g*Flight_Data.Ax(i)*(c_theta*c_psi) + g*Flight_Data.Ay(i)*(-c_phi*s_psi + s_phi*s_theta*c_psi) + g*Flight_Data.Az(i)*(s_phi*s_psi + c_phi*s_theta*c_psi));
+    A(5,5)=1;
+    
+    A(6,1)=dt*(g*Flight_Data.Ay(i)*(c_phi*c_theta) - g*Flight_Data.Az(i)*(s_phi*c_theta));
+    A(6,2)=-dt*(g*Flight_Data.Ax(i)*(c_theta) + g*Flight_Data.Ay(i)*(s_theta*s_phi) + g*Flight_Data.Az(i)*(c_phi*s_theta));
+    A(6,6)=1;
+    
+    A(1,1)=1;
+    A(1,4)=dt(i);
+    
+    A(2,2)=1;
+    A(2,5)=dt(i);
+    
+    A(3,3)=1;
+    A(3,6)=dt(i);
+    
+    P=A*P*A' + Q';
+    K=P*H'/(H*P*H'+R);
+    
+    EKFstates=EKFstates + K*([localGPS(i,1);localGPS(i,2);localGPS(i,3),localGPS(i,4);localGPS(i,5);localGPS(i,6)]-H*EKFstates);
+    
+    EKF.phi(i)=EKFstates(7);
+    EKF.theta(i)=EKFstates(8);
+    EKF. psi(i)=EKFstates(9);
+    
+    EKF.x(i)=EKFstates(1);
+    EKF.y(i)=EKFstates(2);
+    EKF.z(i)=EKFstates(3);
+    
+    EKF.vx(i)=EKFstates(4);
+    EKF.vy(i)=EKFstates(5);
+    EKF.vz(i)=EKFstates(6);
+    
+    P=(eye(6)-K*H)*P;    
+    
+    
+end

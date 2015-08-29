@@ -1,0 +1,4 @@
+Rate limit (deg/s)=p1*x(threshold)+p2
+
+p1=3.0241e06
+p2=0.015311

@@ -1,0 +1,3 @@
+First Number gives the number of Landing attempts,each consequetive pairs give the start and end of the landing, Initial height 30.03 m final height 12.02 m apprx
+5.13e04
+5.195e04

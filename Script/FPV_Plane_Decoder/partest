@@ -1,0 +1,12 @@
+parpool open local 4
+
+spmd
+    switch labindex
+        case 1
+            AHTestRun
+        case 2
+            eamplepar
+
+    end
+end
+parpool close
